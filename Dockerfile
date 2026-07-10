@@ -21,7 +21,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application code
 COPY app/ ./app/
-COPY documents/ ./documents/
 COPY scripts/ ./scripts/
 
 # Render (and most PaaS) inject the port to bind via $PORT — default to 8080
