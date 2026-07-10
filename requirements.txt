@@ -1,8 +1,8 @@
 streamlit==1.41.1
 requests==2.32.3
 
-torch
-sentence-transformers
+torch==2.3.1
+sentence-transformers==3.0.1
 
 pinecone==5.0.1
 groq==0.9.0
