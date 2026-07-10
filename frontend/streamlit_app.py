@@ -1,24 +1,37 @@
 """
 Streamlit frontend for the Enterprise AI Document Assistant.
 
-Supports multiple chat threads (sessions) in a single browser session,
-similar to ChatGPT-style sidebar history. Each thread maps 1:1 to a backend
-session_id, so conversation memory (handled server-side) stays correct when
-switching between threads.
+HF Spaces (Streamlit SDK) deployment note:
+-------------------------------------------
+HF Spaces' Streamlit SDK can only launch a single `streamlit run` process —
+it cannot also run a separate FastAPI/uvicorn server (that requires the
+Docker SDK). So instead of calling the API over HTTP, this version imports
+the service layer (app.services.rag_pipeline, app.services.vector_store)
+directly and calls the same functions in-process.
 
-Run with:
+Nothing in app/services, app/models, or app/prompts changed to make this
+work — only this file did. The FastAPI layer (app/main.py, app/api/routes.py)
+is still in the repo and still fully functional locally via:
+    uvicorn app.main:app --reload
+
+Run this file with:
     streamlit run frontend/streamlit_app.py
 """
 
-import os
+import sys
 import uuid
+from pathlib import Path
 
-import requests
 import streamlit as st
 
-# --- Configuration ---
-API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8080")
-REQUEST_TIMEOUT_SECONDS = 30
+# --- Make `app.*` importable regardless of the working directory Streamlit
+# was launched from (HF Spaces runs `streamlit run frontend/streamlit_app.py`
+# from the repo root, but this guards against other launch setups too). ---
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.services import rag_pipeline, vector_store  # noqa: E402
 
 st.set_page_config(
     page_title="Enterprise AI Document Assistant",
@@ -27,9 +40,6 @@ st.set_page_config(
 )
 
 # --- Custom styling ---
-# Uses Streamlit's built-in CSS variables (var(--...)) instead of hardcoded
-# colors, so source cards and confidence text stay readable in both light
-# and dark themes automatically.
 st.markdown("""
 <style>
     .source-card {
@@ -44,17 +54,10 @@ st.markdown("""
     .confidence-high { color: #2ea043; font-weight: 600; }
     .confidence-medium { color: #d4a72c; font-weight: 600; }
     .confidence-low { color: #e5534b; font-weight: 600; }
-
-    .thread-button-active {
-        background-color: var(--secondary-background-color);
-        border-radius: 6px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- Session state initialization ---
-# `threads`: dict mapping local_thread_id -> {backend_session_id, title, messages}
-# `active_thread_id`: which thread is currently displayed/being chatted in.
 if "threads" not in st.session_state:
     st.session_state.threads = {}
 if "active_thread_id" not in st.session_state:
@@ -62,15 +65,10 @@ if "active_thread_id" not in st.session_state:
 
 
 def _create_new_thread() -> str:
-    """Create a new empty chat thread and make it active.
-
-    Returns:
-        The local thread_id of the newly created thread.
-    """
     thread_id = str(uuid.uuid4())
     st.session_state.threads[thread_id] = {
-        "backend_session_id": None,  # assigned after the first successful query
-        "title": None,               # set from the backend's auto-generated title
+        "backend_session_id": None,
+        "title": None,
         "messages": [],
     }
     st.session_state.active_thread_id = thread_id
@@ -78,14 +76,15 @@ def _create_new_thread() -> str:
 
 
 def _get_active_thread() -> dict:
-    """Return the currently active thread, creating one if none exists yet."""
-    if st.session_state.active_thread_id is None or st.session_state.active_thread_id not in st.session_state.threads:
+    if (
+        st.session_state.active_thread_id is None
+        or st.session_state.active_thread_id not in st.session_state.threads
+    ):
         _create_new_thread()
     return st.session_state.threads[st.session_state.active_thread_id]
 
 
 def _confidence_class(confidence: float) -> str:
-    """Map a confidence score to a CSS class for color-coded display."""
     if confidence >= 0.75:
         return "confidence-high"
     if confidence >= 0.5:
@@ -93,40 +92,41 @@ def _confidence_class(confidence: float) -> str:
     return "confidence-low"
 
 
-def call_query_api(question: str, backend_session_id: str | None) -> dict:
-    """Call the backend /query endpoint.
+def run_query(question: str, backend_session_id: str | None) -> dict:
+    """Call the RAG pipeline directly (in-process) instead of over HTTP.
 
-    Args:
-        question: The user's question text.
-        backend_session_id: The backend session_id for this thread, or None
-            if this is the thread's first message.
-
-    Returns:
-        Parsed JSON response dict.
+    Mirrors the shape of the old API response so the rest of the UI code
+    below needs no changes.
 
     Raises:
-        requests.RequestException: On network failure, timeout, or non-2xx response.
+        rag_pipeline.RAGPipelineError: on infrastructure failures (embedding,
+            vector search, or LLM generation failing) — caught by the caller.
     """
-    response = requests.post(
-        f"{API_BASE_URL}/query",
-        json={"question": question, "session_id": backend_session_id},
-        timeout=REQUEST_TIMEOUT_SECONDS,
+    response = rag_pipeline.answer_question(
+        question=question,
+        session_id=backend_session_id,
     )
-    response.raise_for_status()
-    return response.json()
+    return {
+        "answer": response.answer,
+        "confidence": response.confidence,
+        "sources": [s.model_dump() for s in response.sources],
+        "session_id": response.session_id,
+        "session_title": response.session_title,
+        "llm_model_used": response.llm_model_used,
+    }
 
 
 def check_backend_health() -> dict | None:
-    """Check backend health for the sidebar status indicator.
-
-    Returns:
-        Health response dict, or None if the backend is unreachable.
-    """
+    """Equivalent of the old /health endpoint, called directly."""
     try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
-        response.raise_for_status()
-        return response.json()
-    except requests.RequestException:
+        stats = vector_store.get_index_stats()
+        connected = stats["total_vector_count"] >= 0
+        return {
+            "status": "healthy" if connected else "degraded",
+            "pinecone_connected": connected,
+            "documents_indexed": stats["total_vector_count"],
+        }
+    except Exception:
         return None
 
 
@@ -143,8 +143,7 @@ with st.sidebar:
         st.markdown(f"{status_icon} **Status:** {health['status'].capitalize()}")
         st.markdown(f"📚 **Indexed chunks:** {health['documents_indexed']}")
     else:
-        st.markdown("🔴 **Status:** Backend unreachable")
-        st.caption(f"Could not reach {API_BASE_URL}")
+        st.markdown("🔴 **Status:** Vector store unreachable")
 
     st.divider()
 
@@ -179,15 +178,12 @@ with st.sidebar:
             with col_delete:
                 if st.button("🗑️", key=f"delete_btn_{thread_id}", help="Delete this conversation"):
                     del st.session_state.threads[thread_id]
-
-                    
                     if st.session_state.active_thread_id == thread_id:
                         remaining = list(st.session_state.threads.keys())
                         if remaining:
                             st.session_state.active_thread_id = remaining[-1]
                         else:
                             _create_new_thread()
-
                     st.rerun()
 
     st.divider()
@@ -204,7 +200,6 @@ active_thread = _get_active_thread()
 st.title("Enterprise AI Document Assistant")
 st.caption("Ask a question about company policy — I'll answer using the indexed documents only.")
 
-# Render conversation history for the active thread
 for msg in active_thread["messages"]:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -222,7 +217,6 @@ for msg in active_thread["messages"]:
                     unsafe_allow_html=True,
                 )
 
-# Chat input
 user_question = st.chat_input("Ask a question about company policy...")
 
 if user_question:
@@ -233,9 +227,8 @@ if user_question:
     with st.chat_message("assistant"):
         with st.spinner("Searching documents..."):
             try:
-                result = call_query_api(user_question, active_thread["backend_session_id"])
+                result = run_query(user_question, active_thread["backend_session_id"])
 
-                # Persist backend session_id and title onto this specific thread
                 active_thread["backend_session_id"] = result["session_id"]
                 if active_thread["title"] is None:
                     active_thread["title"] = result.get("session_title")
@@ -263,21 +256,10 @@ if user_question:
                     "confidence": conf,
                 })
 
-                # Rerun so the sidebar thread list updates with the new title immediately
                 st.rerun()
 
-            except requests.exceptions.Timeout:
-                error_msg = "The request timed out. Please try again."
-                st.error(error_msg)
-                active_thread["messages"].append({"role": "assistant", "content": error_msg})
-
-            except requests.exceptions.ConnectionError:
-                error_msg = f"Could not connect to the backend at {API_BASE_URL}. Is the API running?"
-                st.error(error_msg)
-                active_thread["messages"].append({"role": "assistant", "content": error_msg})
-
-            except requests.exceptions.HTTPError:
-                error_msg = "The assistant encountered an error processing this question. Please try again."
+            except rag_pipeline.RAGPipelineError as e:
+                error_msg = "The assistant is temporarily unable to process this request. Please try again shortly."
                 st.error(error_msg)
                 active_thread["messages"].append({"role": "assistant", "content": error_msg})
 

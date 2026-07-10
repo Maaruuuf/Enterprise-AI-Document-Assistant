@@ -37,9 +37,9 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     GROQ_API_KEY: str
-    GROQ_MODEL_PRIMARY: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL_PRIMARY: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     GROQ_MODEL_FALLBACKS: list[str] = [
-    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
     ]
     LLM_TEMPERATURE: float = 0.1
