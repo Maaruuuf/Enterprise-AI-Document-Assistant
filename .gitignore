@@ -1,0 +1,27 @@
+# Environments
+venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+
+# Streamlit secrets (deployment)
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Notebooks (jodi kono .ipynb thake future e)
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# Uploaded documents (sensitive/large files)
+documents/*.pdf
