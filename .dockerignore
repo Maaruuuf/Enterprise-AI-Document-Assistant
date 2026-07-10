@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.git/
+.gitignore
+.ipynb_checkpoints/
+*.ipynb
+frontend/
+tests/
+README.md
