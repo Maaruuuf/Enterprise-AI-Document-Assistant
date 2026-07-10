@@ -99,18 +99,22 @@ def answer_question(question: str, session_id: str | None) -> QueryResponse:
 
     memory.add_turn(session, question, answer_text)
 
+    # Suppress sources if the LLM itself concluded it had no grounding,
+    # even though retrieval confidence passed the gate — otherwise the UI
+    # shows source pages next to an answer that isn't actually based on them.
+    sources = [] if answer_text.strip() == NO_INFO_MESSAGE else _dedupe_sources(reranked_chunks)
+
+
     return QueryResponse(
         answer=answer_text,
         confidence=overall_confidence,
-        sources=_dedupe_sources(reranked_chunks),
+        sources=sources,
         session_id=session.session_id,
         session_title=session.title,
         llm_model_used=model_used,
     )
 
 
-def _compute_confidence(reranked_chunks) -> float:
-    """Delegate to reranker's confidence computation, imported lazily here
-    to avoid a circular import (reranker <- retriever <- rag_pipeline)."""
-    from app.services.reranker import compute_overall_confidence
-    return compute_overall_confidence(reranked_chunks)
+def _compute_confidence(retrieved_chunks) -> float:
+    """Delegate to retriever's confidence computation (top-chunk score)."""
+    return retriever.compute_overall_confidence(retrieved_chunks)

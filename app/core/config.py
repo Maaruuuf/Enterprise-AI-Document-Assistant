@@ -30,10 +30,9 @@ class Settings(BaseSettings):
     PINECONE_REGION: str = "us-east-1"
 
     # --- Retrieval ---
-    TOP_K_RETRIEVE: int = 15
-    TOP_K_RERANK: int = 4
+    TOP_K_RETRIEVE: int = 15        # candidates pulled from Pinecone per query
+    TOP_K_CONTEXT: int = 4          # top-N by raw cosine similarity, sent to the LLM as context
     CONFIDENCE_THRESHOLD: float = 0.5
-    RERANKER_MODEL_NAME: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     # --- LLM ---
     GROQ_API_KEY: str
