@@ -182,8 +182,8 @@ with st.sidebar:
 
     st.divider()
     st.caption(
-        "Ask questions about company HR policy, leave entitlements, company profile, sales handbook, and "
-        "employee handbook guidelines. Answers are grounded strictly in "
+        "Ask questions about Partex-Star-Group Employee Onboarding procedures, HR policies, and "
+        "applicable Bangladesh Labour Laws. Answers are grounded strictly in "
         "the indexed documents — if information isn't available, the "
         "assistant will say so rather than guessing."
     )
@@ -192,7 +192,7 @@ with st.sidebar:
 active_thread = _get_active_thread()
 
 st.title("Enterprise AI Document Assistant")
-st.caption("Ask a question about company policy, leave entitlements, and employee handbook guidelines.")
+st.caption("Ask a question about onboarding procedures, HR policies, and applicable Bangladesh Labour Laws.")
 
 for msg in active_thread["messages"]:
     with st.chat_message(msg["role"]):
@@ -213,7 +213,7 @@ for msg in active_thread["messages"]:
 
 SUGGESTED_QUESTIONS = [
     "What are the leave entitlements for employees?",
-    "What is the official office dress code and policy?",
+    "classification categories for workers ?",
 ]
 
 user_question = st.chat_input("Ask a question about company policy...")

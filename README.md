@@ -1,11 +1,16 @@
-# Enterprise AI Document Assistant
+# Enterprise AI Assistant for Partex-Star-Group Employee Onboarding & HR Policies
 
-A Retrieval-Augmented Generation (RAG) assistant that lets employees ask
-natural-language questions against company policy documents (HR handbook,
-leave policy, sales handbook, company profile, FAQ) and get answers that are
-**grounded strictly in the source documents**, with page-level citations and
-a confidence score — and a clear "I don't know" instead of a fabricated
-answer when the documents don't cover the question.
+A Retrieval-Augmented Generation (RAG) assistant that helps employees understand company onboarding procedures, internal HR
+policies, and applicable Bangladesh Labour Law by answering natural-language
+questions against two reference documents:
+
+1. **A Handbook on the Bangladesh Labour Act 2006** 
+2. **Partex-Star-Group Employee Handbook** 
+
+Answers are **grounded strictly in these source documents**, with
+document + page-level citations and a confidence score — and a clear
+"I don't know" instead of a fabricated answer when neither document covers
+the question.
 
 **Live Demo:** [Enterprise AI Document Assistant · Streamlit](https://enterprise-ai-document-assistant-ncgcrggyu9g9slypepnwuu.streamlit.app/)
 
@@ -39,9 +44,11 @@ answer when the documents don't cover the question.
 
 ## Project Overview
 
-**Problem:** Employees waste time digging through long PDF policy documents
-to answer simple questions ("How many annual leave days am I entitled to?",
-"What's the process for claiming travel expenses?").
+**Problem:** New and existing Partex-Star-Group employees need quick,
+reliable answers about onboarding steps, internal HR policy, and their
+statutory rights under Bangladesh Labour Law — but these live across a
+lengthy government labour act handbook and a separate internal company
+handbook, neither of which is quick to search manually.
 
 **Solution:** A RAG pipeline that:
 
@@ -67,7 +74,7 @@ The pipeline has two independent phases:
 
 ```mermaid
 flowchart LR
-    A["documents/*.pdf"] --> B["pdf processing<br/>PyMuPDF page extraction"]
+    A["documents/*.pdf"] --> B["pdf processing"]
     B --> C["chunking<br/>400-word chunks,<br/>80-word overlap"]
     C --> D["embedding<br/>BAAI/bge-small-en-v1.5"]
     D --> E["vector store"]
@@ -101,6 +108,7 @@ flowchart TD
 | Layer | Choice | Why |
 |---|---|---|
 | PDF extraction | PyMuPDF (`fitz`) | Fast, reliable text extraction with per-page granularity for citations |
+| OCR fallback | Tesseract (via `pytesseract`) | Some pages in the labour act handbook have no native text layer (scanned/image pages); these are rasterized and OCR'd automatically, with per-page confidence tracked for quality review |
 | Embedding model | `BAAI/bge-small-en-v1.5` (Sentence-Transformers) | Strong open-source retrieval embedding, small enough (384-dim) to run on CPU |
 | Vector database | Pinecone (Serverless, AWS) | Managed, no infra to run, generous free tier |
 | LLM | Groq API (`llama-4-scout-17b-16e-instruct` primary, with fallback chain) | Very low latency inference; fallback chain protects against rate limits/outages |
@@ -149,12 +157,25 @@ enterprise-ai-document-assistant/
 - A [Pinecone](https://www.pinecone.io/) account (free tier is enough) and API key
 - A [Groq](https://console.groq.com/) account and API key
 
+### System dependency for ingestion (OCR fallback)
+
+Some pages in the Bangladesh Labour Act handbook have no extractable native
+text layer (scanned pages) and require OCR during ingestion. Install
+Tesseract OCR **before** running `scripts/ingest.py`:
+
+- **macOS:** `brew install tesseract`
+- **Ubuntu/Debian:** `sudo apt-get install tesseract-ocr`
+- **Windows:** https://github.com/UB-Mannheim/tesseract/wiki
+
+This is only required for the local ingestion step — the deployed app
+never runs OCR itself; it only queries an already-populated Pinecone index.
+
 ### Install
 
 ```bash
 git clone <your-repo-url>
 cd enterprise-ai-document-assistant
-python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+python -m venv .venv && .\.venv\Scripts\Activate.ps1 
 pip install -r requirements.txt
 ```
 
@@ -260,7 +281,7 @@ environment variables:
 | `GROQ_MODEL_FALLBACKS` | `llama-3.3-70b-versatile`, `llama-3.1-8b-instant` | Tried in order if the primary fails |
 | `LLM_TEMPERATURE` | 0.1 | Lower = more deterministic, factual answers |
 | `MAX_CONVERSATION_TURNS` | 6 | Turns kept per session |
-| `SESSION_TTL_SECONDS` | 21600 (6h) | Session inactivity expiry |
+
 
 ---
 
@@ -270,7 +291,7 @@ environment variables:
   design ran FastAPI as a separate backend service with Streamlit as a
   thin HTTP client. On the intended free hosting tier, the FastAPI
   service (loading `torch` + `sentence-transformers` for embeddings)
-  consistently exceeded the platform's 512MB memory limit and crashed on
+  consistently exceeded the platform's (`Render`) 512MB memory limit and crashed on
   startup. Rather than fight that constraint, the architecture was
   simplified: `frontend/streamlit_app.py` now imports the exact same
   `app/services/rag_pipeline.py` and calls it in-process. No service-layer
@@ -293,6 +314,12 @@ environment variables:
 - **`.env.example` keys are treated case-insensitively** by
   `pydantic-settings` (Pydantic's default), so `pinecone_api_key` in
   `.env` correctly populates `Settings.PINECONE_API_KEY`.
+- **OCR fallback assumes Tesseract is available in the ingestion
+  environment.** The Bangladesh Labour Act handbook contains some
+  scanned/image-only pages with no native text layer; `pdf_processor.py`
+  detects these (native text below `OCR_MIN_CHARS`) and OCRs them
+  automatically. This only runs during local ingestion, never in the
+  deployed app.
 
 ---
 
@@ -321,6 +348,11 @@ environment variables:
   BGE embedding model loads into memory.
 - **English-only.** No multilingual handling in chunking, embedding, or
   the system prompt.
+- **OCR-extracted text quality varies with scan quality.** Pages recovered
+  via OCR (rather than native PDF text) may contain minor transcription
+  errors depending on the source scan's clarity; per-page OCR confidence
+  is logged during ingestion so low-confidence pages can be manually
+  spot-checked, but this isn't enforced automatically at query time.
 
 ---
 
@@ -332,5 +364,22 @@ environment variables:
 - Add basic auth / API key gating on `/query`.
 - Add automated ingestion on document upload (e.g. a `/documents/upload`
   endpoint) instead of the manual CLI script.
-- Add evaluation harness (retrieval precision/recall, answer faithfulness)
-  against a labeled question set.
+- Add a BM25 (sparse/keyword) retrieval path alongside the current dense
+  embedding search, combined via hybrid scoring — this would help with
+  exact-term queries (e.g. specific labour act section numbers or defined
+  terms) where keyword overlap matters more than semantic similarity.
+
+---
+
+## 💬 Sample Questions
+
+Not sure where to start? Try asking the assistant things like:
+
+- What is the probation period for a clerical worker?
+- What are the classification categories for workers?
+- Under what condition can a probationer's period be extended under the Act?
+- What is the mandatory notice period required for a permanent employee to resign?
+- If a worker is laid off due to a sudden shortage of raw materials, are they entitled to compensation during the first 45 days?
+- What is the statutory entitlement for Festival Holidays each year?
+
+The assistant answers strictly from the indexed documents (Bangladesh Labour Act 2006 and the company employee handbook) — if something isn't covered in those documents, it will say so rather than guessing.

@@ -16,12 +16,20 @@ from datetime import datetime
 
 @dataclass
 class PageContent:
-    """Raw text extracted from a single PDF page."""
+    """Raw text extracted from a single PDF page.
+
+    extraction_method distinguishes text pulled from the PDF's native text
+    layer ("native") from text recovered via OCR on a rasterized page
+    ("ocr") — the latter happens for scanned/image-only pages (common in
+    older or scanned policy documents like labour act handbooks).
+    """
     document_name: str
     page_number: int
     text: str
     start_char: int
     end_char: int
+    extraction_method: str = "native"        # "native" or "ocr"
+    ocr_confidence: Optional[float] = None    # None for native pages, 0-100 for OCR'd pages
 
 
 @dataclass

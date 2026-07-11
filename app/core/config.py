@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     # --- Paths ---
     DOCUMENTS_DIR: str = "documents"
 
+    # --- OCR fallback (for scanned/image-only PDF pages) ---
+    OCR_MIN_CHARS: int = 20          # below this native char count, treat page as "no text layer" and OCR it
+    OCR_RENDER_DPI: int = 300        # higher DPI = better OCR accuracy, slower
+    OCR_LOW_CONFIDENCE_THRESHOLD: float = 70.0  # OCR'd pages below this confidence are flagged in logs
+
     # --- Chunking ---
     CHUNK_SIZE_WORDS: int = 400
     CHUNK_OVERLAP_WORDS: int = 80
