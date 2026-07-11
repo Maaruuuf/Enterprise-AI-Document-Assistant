@@ -171,7 +171,7 @@ never runs OCR itself; it only queries an already-populated Pinecone index.
 ### Install
 
 ```bash
-git clone <your-repo-url>
+git clone <repo-url>
 cd Enterprise-AI-Document-Assistant
 python -m venv .venv && .\.venv\Scripts\Activate.ps1 
 pip install -r requirements.txt
