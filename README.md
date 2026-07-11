@@ -90,7 +90,7 @@ Each vector is stored with metadata: `source document name`, `page_start`,
 flowchart TD
     U["User question<br/>(Streamlit chat)"] --> EQ["embed query"]
     EQ --> S["vector search<br/>Pinecone top k=15"]
-    S --> RK["sort by cosine score,<br/>keep top 4 "]
+    S --> RK["sort by cosine score"]
     RK --> G{"top chunk score ≥<br/>CONFIDENCE THRESHOLD (0.5)?"}
     G -- "No" --> N["Insufficient information<br/>LLM is NOT called"]
     G -- "Yes" --> M["SYSTEM PROMPT + excerpts"]
