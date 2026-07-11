@@ -88,13 +88,12 @@ Each vector is stored with metadata: `source document name`, `page_start`,
 
 ```mermaid
 flowchart TD
-    U["User question<br/>(Streamlit chat)"] --> P["rag pipeline"]
-    P --> EQ["embed query"]
-    EQ --> S["vector search<br/>Pinecone top_k=15"]
-    S --> RK["sort by cosine score,<br/>keep top 4 (TOP_K_CONTEXT)"]
-    RK --> G{"top-chunk score ≥<br/>CONFIDENCE_THRESHOLD (0.5)?"}
+    U["User question<br/>(Streamlit chat)"] --> EQ["embed query"]
+    EQ --> S["vector search<br/>Pinecone top k=15"]
+    S --> RK["sort by cosine score,<br/>keep top 4 "]
+    RK --> G{"top chunk score ≥<br/>CONFIDENCE THRESHOLD (0.5)?"}
     G -- "No" --> N["Insufficient information<br/>LLM is NOT called"]
-    G -- "Yes" --> M["SYSTEM_PROMPT + excerpts"]
+    G -- "Yes" --> M["SYSTEM PROMPT + excerpts"]
     M --> L["LLM generate answer<br/>"]
     L --> RESP["Query Response"]
     RESP --> U2["Rendered in chat:<br/>answer, confidence %, sources"]
@@ -163,9 +162,8 @@ Some pages in the Bangladesh Labour Act handbook have no extractable native
 text layer (scanned pages) and require OCR during ingestion. Install
 Tesseract OCR **before** running `scripts/ingest.py`:
 
-- **macOS:** `brew install tesseract`
-- **Ubuntu/Debian:** `sudo apt-get install tesseract-ocr`
 - **Windows:** https://github.com/UB-Mannheim/tesseract/wiki
+- **Ubuntu/Debian:** `sudo apt-get install tesseract-ocr`
 
 This is only required for the local ingestion step — the deployed app
 never runs OCR itself; it only queries an already-populated Pinecone index.
@@ -174,7 +172,7 @@ never runs OCR itself; it only queries an already-populated Pinecone index.
 
 ```bash
 git clone <your-repo-url>
-cd enterprise-ai-document-assistant
+cd Enterprise-AI-Document-Assistant
 python -m venv .venv && .\.venv\Scripts\Activate.ps1 
 pip install -r requirements.txt
 ```
